@@ -1,0 +1,53 @@
+import os
+from pathlib import Path
+
+class Config:
+    # Directories
+    BASE_DIR = Path(__file__).parent.parent
+    OUTPUT_DIR = Path("output")
+    OUTPUT_DIR.mkdir(exist_ok=True)
+    MODEL_CACHE_DIR = OUTPUT_DIR / "model_cache"
+    MODEL_CACHE_DIR.mkdir(exist_ok=True)
+
+    # API Configuration
+    API_HOST = os.getenv("API_HOST", "127.0.0.1")
+    API_PORT = int(os.getenv("API_PORT", "8001"))
+
+    # Redis Configuration
+    REDIS_URL = os.getenv("REDIS_URL", "redis://localhost:6379")
+    REDIS_MAX_CONNECTIONS = int(os.getenv("REDIS_MAX_CONNECTIONS", "10"))
+
+    # RabbitMQ Configuration
+    RABBITMQ_HOST = os.getenv("RABBITMQ_HOST", "localhost")
+    RABBITMQ_PORT = int(os.getenv("RABBITMQ_PORT", "5672"))
+    RABBITMQ_USER = os.getenv("RABBITMQ_USER", "guest")
+    RABBITMQ_PASS = os.getenv("RABBITMQ_PASS", "guest")
+    RABBITMQ_URL = f"amqp://{RABBITMQ_USER}:{RABBITMQ_PASS}@{RABBITMQ_HOST}:{RABBITMQ_PORT}/"
+
+    # Queue Settings
+    QUEUE_NAME = os.getenv("QUEUE_NAME", "video_generation_queue")
+    QUEUE_MAX_SIZE = int(os.getenv("QUEUE_MAX_SIZE", "1000"))
+    QUEUE_MAX_PRIORITY = int(os.getenv("QUEUE_MAX_PRIORITY", "10"))
+    QUEUE_MAX_RETRIES = int(os.getenv("QUEUE_MAX_RETRIES", "5"))
+    QUEUE_RETRY_DELAY = int(os.getenv("QUEUE_RETRY_DELAY", "2"))
+
+    # Rate Limiting
+    RATE_LIMIT_WINDOW = int(os.getenv("RATE_LIMIT_WINDOW", "60"))
+    RATE_LIMIT_MAX_REQUESTS = int(os.getenv("RATE_LIMIT_MAX_REQUESTS", "10"))
+
+    # Resource Thresholds
+    MEMORY_THRESHOLD = float(os.getenv("MEMORY_THRESHOLD", "90.0"))
+    GPU_MEMORY_THRESHOLD = float(os.getenv("GPU_MEMORY_THRESHOLD", "90.0"))
+
+    # Cleanup Settings
+    FILE_CLEANUP_AGE = int(os.getenv("FILE_CLEANUP_AGE", "86400"))  # 24 hours
+    COMPLETED_JOBS_MAX_AGE = int(os.getenv("COMPLETED_JOBS_MAX_AGE", "3600"))  # 1 hour
+
+    @classmethod
+    def validate(cls):
+        """Config değerlerinin geçerliliğini kontrol et"""
+        assert 0 <= cls.MEMORY_THRESHOLD <= 100, "Memory threshold must be between 0 and 100"
+        assert 0 <= cls.GPU_MEMORY_THRESHOLD <= 100, "GPU memory threshold must be between 0 and 100"
+        assert cls.QUEUE_MAX_RETRIES > 0, "Max retries must be positive"
+        assert cls.QUEUE_RETRY_DELAY > 0, "Retry delay must be positive"
+        return True

@@ -1,0 +1,56 @@
+version: '3.8'
+
+services:
+  ltx-video-api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: ltx-video-api
+    ports:
+      - "8001:8001"
+    environment:
+      - API_HOST=0.0.0.0
+      - API_PORT=8001
+      - DEBUG_MODE=true
+      - MODEL_ID=Lightricks/LTX-Video
+      - ENABLE_VAE_SLICING=true
+      - USE_MIXED_PRECISION=true
+      - MAX_FRAMES=32
+      - DEFAULT_FPS=8
+    volumes:
+      - ./:/workspace
+      - model_cache:/workspace/model_cache
+      - output_data:/workspace/output
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+
+  redis:
+    image: redis:alpine
+    container_name: ltx-video-redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+
+  rabbitmq:
+    image: rabbitmq:3-management
+    container_name: ltx-video-rabbitmq
+    ports:
+      - "5672:5672"
+      - "15672:15672"
+    environment:
+      - RABBITMQ_DEFAULT_USER=guest
+      - RABBITMQ_DEFAULT_PASS=guest
+    volumes:
+      - rabbitmq_data:/var/lib/rabbitmq
+
+volumes:
+  model_cache:
+  output_data:
+  redis_data:
+  rabbitmq_data:
