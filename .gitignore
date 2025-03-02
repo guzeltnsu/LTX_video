@@ -48,3 +48,16 @@ htmlcov/
 # System
 .DS_Store
 Thumbs.db
+*.tar.gz
+*.zip
+*.pt        # PyTorch model dosyaları
+*.ckpt      # Checkpoint dosyaları
+*.mp4       # Video dosyaları
+*.avi       # Video dosyaları
+*.webm      # Video dosyaları
+__pycache__/  # Python Cache
+*.log        # Log dosyaları
+.DS_Store    # MacOS sistem dosyası
+.env         # Ortam değişkenleri
+
+
