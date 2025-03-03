@@ -15,20 +15,26 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 RUN python -m venv /opt/venv
 ENV PATH="/opt/venv/bin:$PATH"
 
-# Önce numpy 1.x sürümünü yükle (NumPy 2.x uyumsuzluğunu önlemek için)
-RUN pip install --no-cache-dir --upgrade pip && \
-    pip install --no-cache-dir numpy==1.26.0
+# Pip'i güncelle
+RUN pip install --no-cache-dir --upgrade pip wheel setuptools
 
-# Paketleri belirli sürümlerde yükle (huggingface_hub'ı öncelikle yükle)
-RUN pip install --no-cache-dir torch==2.1.2 torchvision==0.16.2 && \
-    pip install --no-cache-dir huggingface_hub==0.17.3 && \
-    pip install --no-cache-dir tokenizers==0.14.1 && \
-    pip install --no-cache-dir safetensors==0.4.0 && \
-    pip install --no-cache-dir transformers==4.36.2 && \
-    pip install --no-cache-dir diffusers==0.23.1 && \
-    pip install --no-cache-dir accelerate==0.25.0
+# SciPy önce yükle (kritik bağımlılık)
+RUN pip install --no-cache-dir scipy==1.11.4
 
-# Diğer gereksinimleri yükle
+# Paketleri kademeli olarak yükle (kritik paketleri önce)
+RUN pip install --no-cache-dir torch==2.1.2 torchvision==0.16.2
+RUN pip install --no-cache-dir numpy==1.26.0 Pillow>=10.2.0
+RUN pip install --no-cache-dir huggingface_hub==0.17.3
+RUN pip install --no-cache-dir tokenizers==0.13.3
+RUN pip install --no-cache-dir safetensors==0.4.0
+RUN pip install --no-cache-dir transformers==4.30.2
+
+# Diffusers paketini kararlı sürüm yerine GitHub ana dalından yükle
+RUN pip install --no-cache-dir git+https://github.com/huggingface/diffusers.git
+
+RUN pip install --no-cache-dir accelerate==0.20.3
+
+# Diğer paketleri yükle (ML ekosistemi dışındakiler)
 RUN pip install --no-cache-dir \
     fastapi==0.109.0 \
     uvicorn[standard]==0.25.0 \
@@ -45,7 +51,11 @@ RUN pip install --no-cache-dir \
     requests>=2.31.0 \
     python-json-logger>=2.0.7
 
-# Üretim ortamı
+# Kurulum doğrulaması
+RUN python -c "import huggingface_hub, diffusers, transformers, scipy; \
+    print(f'huggingface_hub: {huggingface_hub.__version__}, diffusers: {diffusers.__version__}, transformers: {transformers.__version__}, scipy: {scipy.__version__}')"
+
+# Üretim ortamı (devamı aynı şekilde)
 FROM base AS runtime
 WORKDIR /workspace
 
@@ -69,6 +79,7 @@ RUN mkdir -p /workspace/output /workspace/model_cache /workspace/output/logs
 COPY app/ /workspace/app/
 COPY handler.py /workspace/
 COPY runpod/ /workspace/runpod/
+COPY logging.conf /workspace/
 
 # Çevre değişkenlerini ayarla
 ENV PYTHONPATH="/workspace" \
@@ -77,7 +88,10 @@ ENV PYTHONPATH="/workspace" \
     API_PORT="8001" \
     DEBUG_MODE="false" \
     HF_HOME="/workspace/model_cache" \
-    MODE="serverless"
+    MODE="serverless" \
+    NVIDIA_VISIBLE_DEVICES=all \
+    NVIDIA_DRIVER_CAPABILITIES=compute,utility \
+    CUDA_VISIBLE_DEVICES=all
 
 # Port aç
 EXPOSE 8001
@@ -88,19 +102,24 @@ set -x\n\
 echo "MODE: $MODE"\n\
 echo "Python versiyonu:"\n\
 python --version\n\
-echo "NumPy versiyonu:"\n\
-python -c "import numpy; print(numpy.__version__)"\n\
+echo "PYTHONPATH: $PYTHONPATH"\n\
 echo "HuggingFace Hub versiyonu:"\n\
 python -c "import huggingface_hub; print(huggingface_hub.__version__)"\n\
+echo "Diffusers versiyonu:"\n\
+python -c "import diffusers; print(diffusers.__version__)"\n\
+echo "Transformers versiyonu:"\n\
+python -c "import transformers; print(transformers.__version__)"\n\
+echo "SciPy versiyonu:"\n\
+python -c "import scipy; print(scipy.__version__)"\n\
 if [ "$MODE" = "api" ]; then\n\
-  echo "API modu başlatılıyor..."\n\
-  python -m app.main\n\
+echo "API modu başlatılıyor..."\n\
+python -m app.main\n\
 elif [ "$MODE" = "serverless" ]; then\n\
-  echo "Serverless modu başlatılıyor..."\n\
-  python /workspace/handler.py\n\
+echo "Serverless modu başlatılıyor..."\n\
+python /workspace/handler.py\n\
 else\n\
-  echo "Geçersiz MODE: $MODE"\n\
-  exit 1\n\
+echo "Geçersiz MODE: $MODE"\n\
+exit 1\n\
 fi' > /workspace/start.sh && chmod +x /workspace/start.sh
 
 # Başlatma betiğini çalıştır

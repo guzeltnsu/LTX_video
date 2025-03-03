@@ -82,7 +82,7 @@ class VideoGenerator:
         try:
             model_config = {
                 "torch_dtype": torch.float16 if self.device.type == "cuda" else torch.float32,
-                "device_map": "auto",  # Otomatik device mapping ile daha iyi bellek kullanımı
+                "device_map": "balanced",  
                 "use_safetensors": True,  # Daha hızlı model yükleme
                 "low_cpu_mem_usage": True
             }

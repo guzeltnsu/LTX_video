@@ -1,42 +1,78 @@
-import psutil
+# runpod/monitoring.py
+
 import time
-import torch
-from datetime import datetime
+import psutil
+import os
+from prometheus_client import start_http_server, Gauge, Counter
+import threading
+import logging
 
-class Monitor:
-    def __init__(self):
-        self.start_time = time.time()
-        
-    def log_event(self, event_type, message, extra_data=None):
-        timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-        print(f"[{timestamp}][{event_type}] {message}")
-        if extra_data:
-            print(f"Extra data: {extra_data}")
-            
-    def get_system_metrics(self):
-        metrics = {
-            "cpu_percent": psutil.cpu_percent(),
-            "memory_percent": psutil.virtual_memory().percent,
-            "memory_used_gb": psutil.virtual_memory().used / (1024**3),
-            "memory_total_gb": psutil.virtual_memory().total / (1024**3),
-            "uptime_seconds": time.time() - self.start_time
-        }
-        
-        # GPU metrics
-        if torch.cuda.is_available():
-            metrics.update({
-                "device": "cuda",
-                "gpu_memory_used_gb": torch.cuda.memory_allocated() / (1024**3),
-                "gpu_memory_reserved_gb": torch.cuda.memory_reserved() / (1024**3),
-                "gpu_utilization": None  # NVIDIA-SMI gerekiyor
-            })
-        else:
-            metrics["device"] = "cpu"
-            
-        return metrics
-        
-    def log_metrics(self):
-        metrics = self.get_system_metrics()
-        self.log_event("metrics", "System metrics", metrics)
+logger = logging.getLogger("monitoring")
 
-monitor = Monitor()
+# Metrikler
+gpu_usage = Gauge('gpu_usage_percent', 'GPU usage percentage')
+gpu_memory = Gauge('gpu_memory_used_mb', 'GPU memory usage in MB')
+cpu_usage = Gauge('cpu_usage_percent', 'CPU usage percentage')
+memory_usage = Gauge('memory_usage_percent', 'Memory usage percentage')
+job_counter = Counter('processed_jobs_total', 'Total number of processed jobs')
+error_counter = Counter('job_errors_total', 'Total number of job errors')
+
+def collect_system_metrics():
+    """Sistem metriklerini topla ve prometheus metriklerine aktar"""
+    while True:
+        try:
+            # CPU kullanımı
+            cpu_percent = psutil.cpu_percent(interval=1)
+            cpu_usage.set(cpu_percent)
+            
+            # Bellek kullanımı
+            memory = psutil.virtual_memory()
+            memory_usage.set(memory.percent)
+            
+            # GPU metrikleri (nvidia-smi aracılığıyla)
+            try:
+                import subprocess
+                gpu_info = subprocess.check_output(
+                    ['nvidia-smi', '--query-gpu=utilization.gpu,memory.used', '--format=csv,noheader,nounits']
+                ).decode('utf-8').strip().split('\n')
+                
+                for i, line in enumerate(gpu_info):
+                    util, mem = line.split(',')
+                    gpu_usage.labels(gpu=i).set(float(util))
+                    gpu_memory.labels(gpu=i).set(float(mem))
+            except:
+                logger.warning("GPU metrikleri alınamadı")
+                
+        except Exception as e:
+            logger.error(f"Metrik toplama hatası: {e}")
+        
+        time.sleep(15)  # Her 15 saniyede bir güncelle
+
+def start_monitoring(port=8000):
+    """Prometheus metrik sunucusunu başlat ve metrik toplamayı başlat"""
+    try:
+        # Prometheus metrik sunucusunu başlat
+        start_http_server(port)
+        logger.info(f"Prometheus metrik sunucusu port {port} üzerinde başlatıldı")
+        
+        # Arka planda metrik toplamayı başlat
+        metrics_thread = threading.Thread(target=collect_system_metrics, daemon=True)
+        metrics_thread.start()
+        logger.info("Sistem metriklerini toplama başlatıldı")
+        
+        return True
+    except Exception as e:
+        logger.error(f"İzleme başlatma hatası: {e}")
+        return False
+
+if __name__ == "__main__":
+    # Direkt çalıştırıldığında metrik sunucusunu başlat
+    logging.basicConfig(level=logging.INFO)
+    start_monitoring()
+    
+    # Ana thread'i çalışır durumda tut
+    try:
+        while True:
+            time.sleep(60)
+    except KeyboardInterrupt:
+        logger.info("İzleme sonlandırılıyor...")
